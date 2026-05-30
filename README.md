@@ -4,7 +4,7 @@
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.12+xpu-EE4C2C)](https://pytorch.org/)
 [![OpenVINO](https://img.shields.io/badge/OpenVINO-2026.1-00A3E0)](https://docs.openvino.ai/)
 
-This directory documents issues encountered during AI training and inference on a specific Intel platform (Arrow Lake + Arc GPU + NPU), along with mitigation strategies explored.
+This directory documents issues encountered during AI training and inference on a specific Intel platform (Arrow Lake + Arc iGPU + NPU), along with mitigation strategies explored.
 
 > ⚠️ **Disclaimer:** All observations here are based on specific hardware/software/model combinations and **may not apply to other environments**. See detailed disclaimers in each document.
 
@@ -18,7 +18,6 @@ This directory documents issues encountered during AI training and inference on 
 |-----------|-------|
 | **CPU** | Intel Core Ultra 9 285H (Arrow Lake, 6P+8E, 14 cores) |
 | **iGPU** | Intel Arc Graphics (8 Xe-core, 128 GB shared memory) |
-| **dGPU** | Intel Arc Pro 130T/140T (Arrow Lake-P, PCI ID `8086:7d51`) |
 | **NPU** | Intel AI Boost (`/dev/dri/renderD128`) |
 | **RAM** | 128 GB DDR5 (shared with iGPU) |
 
@@ -37,9 +36,9 @@ This directory documents issues encountered during AI training and inference on 
 
 ## Documents
 
-### 1. [dGPU Stability Guide](intel_gpu_aitrain001.md)
+### 1. [iGPU Stability Guide](intel_gpu_aitrain001.md)
 
-**Use case:** OpenVINO + Qwen3-series model inference on Intel Arc discrete GPU.
+**Use case:** OpenVINO + Qwen3-series model inference on Intel Arc integrated GPU.
 
 **Key findings (on this platform):**
 - Sustained GPU utilization >90% → Kernel Panic / segfault
@@ -75,7 +74,7 @@ This directory documents issues encountered during AI training and inference on 
 |----------|-----|-----------|--------|------------------------|
 | **Transformer training** | iGPU | PyTorch XPU | ❌ Backward crash | Gated CNN / CPU training |
 | **CNN training** | iGPU | PyTorch XPU | ✅ Stable | — |
-| **LLM inference (Qwen3)** | dGPU | OpenVINO | ⚠️ Needs cooling | INT8 + small batch + cooldown |
+| **LLM inference (Qwen3)** | iGPU | OpenVINO | ⚠️ Needs cooling | INT8 + small batch + cooldown |
 | **LLM inference** | NPU | OpenVINO | ✅ Tested | Requires static shapes |
 | **LLM inference** | CPU | OpenVINO | ✅ Stable | Slowest performance |
 

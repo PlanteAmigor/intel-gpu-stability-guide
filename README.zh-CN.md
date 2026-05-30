@@ -4,7 +4,7 @@
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.12+xpu-EE4C2C)](https://pytorch.org/)
 [![OpenVINO](https://img.shields.io/badge/OpenVINO-2026.1-00A3E0)](https://docs.openvino.ai/)
 
-本目录收录了在特定 Intel 平台（Arrow Lake + Arc GPU + NPU）上运行 AI 训练和推理时遇到的问题记录与缓解方案。
+本目录收录了在特定 Intel 平台（Arrow Lake + Arc iGPU + NPU）上运行 AI 训练和推理时遇到的问题记录与缓解方案。
 
 > ⚠️ **免责声明：** 本文档所述的观察均基于特定硬件/软件/模型组合，**可能不适用于其他环境**。详见各文档中的详细免责说明。
 
@@ -18,7 +18,6 @@
 |------|------|
 | **CPU** | Intel Core Ultra 9 285H (Arrow Lake, 6P+8E, 14核) |
 | **iGPU** | Intel Arc Graphics (8 Xe-core, 共享内存 128GB) |
-| **dGPU** | Intel Arc Pro 130T/140T (Arrow Lake-P, PCI ID `8086:7d51`) |
 | **NPU** | Intel AI Boost (`/dev/dri/renderD128`) |
 | **内存** | 128 GB DDR5 (与 iGPU 共享) |
 
@@ -37,9 +36,9 @@
 
 ## 文档索引
 
-### 1. [独立显卡 (dGPU) 稳定性指南](intel_gpu_aitrain001.md)
+### 1. [iGPU 推理稳定性指南](intel_gpu_aitrain001.md)
 
-**适用场景：** OpenVINO + Qwen3 系列模型在 Intel Arc 独立显卡上的推理负载。
+**适用场景：** OpenVINO + Qwen3 系列模型在 Intel Arc 集成显卡上的推理负载。
 
 **核心发现（本次测试中）：**
 - 持续 GPU 占用率 >90% → Kernel Panic / 段错误
@@ -75,7 +74,7 @@
 |------|---------|------|------|------------|
 | **Transformer 训练** | iGPU | PyTorch XPU | ❌ 反向传播崩溃 | 使用 Gated CNN / CPU 训练 |
 | **CNN 训练** | iGPU | PyTorch XPU | ✅ 稳定 | — |
-| **大模型推理 (Qwen3)** | dGPU | OpenVINO | ⚠️ 需冷却策略 | INT8 + 小 batch + 冷却 |
+| **大模型推理 (Qwen3)** | iGPU | OpenVINO | ⚠️ 需冷却策略 | INT8 + 小 batch + 冷却 |
 | **大模型推理** | NPU | OpenVINO | ✅ 已测试 | 需静态 shape |
 | **大模型推理** | CPU | OpenVINO | ✅ 稳定 | 性能最慢 |
 
