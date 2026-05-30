@@ -79,6 +79,29 @@ On our test system, OpenVINO ran inference on the **Compute (CCS)** engine. When
 
 In our experiments, both INT4 and INT8 configurations crashed under sustained high GPU utilization (>90%). The key variable was GPU load level and duration, not the quantization format. After introducing batch-size limits and cooldown intervals, the INT8 configuration ran stably. It remains unclear whether INT4 with the same protection measures would also be stable — quantization format may still play a secondary role.
 
+### 4. Cross-Project Validation: Same Pattern Across Different Frameworks
+
+This pattern was not limited to OpenVINO inference. We observed the same behavior in **two additional projects** on the same platform:
+
+| Project | Framework | Workload | Issue | Mitigation | Result |
+|---------|-----------|----------|-------|------------|--------|
+| **Qwen3 embedding** | OpenVINO | LLM inference | Kernel panic / segfault | INT8 + batch=10 + cooling | ✅ Stable |
+| **Gated CNN poetry** | PyTorch XPU | Text model training (61M params) | Terminal freeze, training stalls | Per-8-batch 3s cooling + per-update 5s cooling + latency monitoring | ✅ Stable (loss 9.1→0.85) |
+| **AlphaZero gomoku** | PyTorch XPU | Game AI training (CNN) | Segfault at batch ~293 | Per-50-batch 30s cooling + retry ×3 | ✅ Stable |
+
+In all three cases, the fix was the same: **reduce sustained GPU load with frequent cooldown breaks.** The symptoms (terminal freezing, segfaults, NaN output) looked different but shared a common root.
+
+### 5. Possible Root Cause: Software Protection Layer, Not Hardware
+
+Based on our observations across these projects, the instability may be attributed to the **Intel XPU software stack lacking the protective mechanisms found in CUDA**, rather than a fundamental hardware defect:
+
+- **CUDA** has built-in watchdog timers, graceful error recovery, driver timeout detection, and automatic context cleanup
+- **Intel XPU** appears to lack several of these safeguards — when the GPU is under sustained load, the driver can hang, crash, or take down the entire system without warning
+
+On NVIDIA platforms, equivalent workloads run stably without manual cooling because the driver handles thermal/power events gracefully. On this Intel platform, the same workloads require explicit cooldown management to stay within the driver's safe operating envelope. This does **not** mean the hardware is defective — it may simply reflect differences in software maturity.
+
+> ⚠️ This is a hypothesis based on our specific test environment. We have not independently verified the absence of these mechanisms in the Intel XPU driver stack, nor do we claim that CUDA is universally superior for all workloads.
+
 ---
 
 ## Before / After Comparison
@@ -107,6 +130,29 @@ In our experiments, both INT4 and INT8 configurations crashed under sustained hi
 
 ---
 
+## Cross-Project Protection Pattern
+
+Across all three projects on this platform, a consistent protection strategy emerged:
+
+```
+┌─────────────────────────────────────────────────┐
+│          Intel GPU Protection Pattern            │
+├─────────────────────────────────────────────────┤
+│  1. Active cooldown: short breaks at regular    │
+│     intervals (every 8-50 batches)              │
+│  2. Latency monitoring: track batch time        │
+│     baseline, detect throttling (>2x baseline)  │
+│  3. Escalated cooldown: extra rest when         │
+│     throttling detected                         │
+│  4. Crash retry: auto-retry with GPU reset      │
+│  5. Checkpointing: frequent saves for resume    │
+└─────────────────────────────────────────────────┘
+```
+
+This pattern is a workaround for what may be a **software protection gap** — the Intel GPU driver stack may not yet have the same level of fault tolerance as more mature platforms. With these measures, all three projects ran stably.
+
+---
+
 ## Summary (for this specific setup)
 
 On the tested platform and with the tested models, the following strategies helped achieve stable operation:
@@ -116,7 +162,9 @@ On the tested platform and with the tested models, the following strategies help
 - **Thermal detection via latency monitoring** caught throttling early and triggered extra cooldown
 - **INT8 quantization** combined with load limits and cooldown intervals achieved stable operation (INT4 alone was not tested with these protections)
 
-Without these measures, sustained GPU load >90% eventually triggered a driver crash regardless of quantization format. These findings may or may not apply to other Intel Arc configurations.
+Without these measures, sustained GPU load >90% eventually triggered a driver crash regardless of quantization format. The same pattern appeared across three different projects (OpenVINO inference, PyTorch XPU training, AlphaZero training), suggesting a common root cause in the software protection layer rather than a hardware defect.
+
+These findings may or may not apply to other Intel Arc configurations.
 
 ---
 
@@ -194,6 +242,29 @@ Without these measures, sustained GPU load >90% eventually triggered a driver cr
 
 在我们的实验中，INT4 和 INT8 配置在持续高 GPU 占用率（>90%）下均出现崩溃。关键变量是 GPU 负载水平和持续时间，而非量化格式。加入 batch 限制和冷却间隔后，INT8 配置实现了稳定运行。目前尚不清楚 INT4 在同等保护措施下是否也能稳定——量化格式可能起次要作用。
 
+### 4. 跨项目验证：不同框架下的相同规律
+
+这种现象不仅出现在 OpenVINO 推理中。我们在同一平台上的**另外两个项目**中观察到了相同的行为：
+
+| 项目 | 框架 | 工作负载 | 问题 | 缓解措施 | 结果 |
+|------|------|---------|------|---------|------|
+| **Qwen3 向量化** | OpenVINO | 大模型推理 | Kernel panic / 段错误 | INT8 + batch=10 + 冷却 | ✅ 稳定 |
+| **Gated CNN 诗词** | PyTorch XPU | 文本模型训练 (61M) | 终端卡死、训练中断 | 每8批冷3s + 每更新冷5s + 耗时检测 | ✅ 稳定 (loss 9.1→0.85) |
+| **AlphaZero 五子棋** | PyTorch XPU | 游戏 AI 训练 (CNN) | 约第293批段错误 | 每50批冷30s + 重试×3 | ✅ 稳定 |
+
+三个案例的解决方案相同：**通过频繁冷却来降低 GPU 持续负载。** 症状（终端冻结、段错误、NaN输出）看起来不同，但根源可能一致。
+
+### 5. 可能原因：软件保护层不到位，而非硬件问题
+
+综合多个项目的观察，这些问题可能源于 **Intel XPU 软件栈缺少 CUDA 中已有的保护机制**，而非硬件缺陷：
+
+- **CUDA** 内置了 watchdog 定时器、优雅错误恢复、驱动超时检测和自动上下文清理
+- **Intel XPU** 可能缺少部分上述保护——当 GPU 持续高负载时，驱动可能直接挂起、崩溃或不告警地拖垮整个系统
+
+在 NVIDIA 平台上，同等负载无需手动冷却即可稳定运行，因为驱动本身处理了热管理/功耗事件。而在此平台上，同等负载需要明确的冷却策略才能保持在驱动的安全运行范围内。这**不意味着硬件有缺陷**——可能只是反映了软件成熟度的差异。
+
+> ⚠️ 这仅是基于我们特定测试环境的推测。我们未独立验证 Intel XPU 驱动栈是否确实缺少这些机制，也不认为 CUDA 在所有场景下都更优越。
+
 ---
 
 ## 优化前后对比
@@ -222,6 +293,28 @@ Without these measures, sustained GPU load >90% eventually triggered a driver cr
 
 ---
 
+> 注：以下策略在三个不同项目（OpenVINO 推理、PyTorch XPU 训练、AlphaZero 训练）中得到验证，可能具有一定的通用参考价值。
+
+## 跨项目通用保护模式
+
+基于三个项目的经验，总结出一套在本次平台上有效的 GPU 保护策略：
+
+```
+┌─────────────────────────────────────────────────┐
+│           Intel GPU 保护策略通用模板               │
+├─────────────────────────────────────────────────┤
+│  1. 主动冷却：每隔若干 batch 加入短暂休息         │
+│     (8-50 batch 间隔，视 GPU 负载定)              │
+│  2. 耗时监控：追踪 batch 耗时基线                  │
+│     检测降频（>2x 基线时触发额外冷却）             │
+│  3. 分级冷却：轻度降频冷 10s，严重降频冷 20s       │
+│  4. 崩溃重试：自动捕获异常，清理显存后重试 ×3       │
+│  5. 断点保存：每次参数更新保存 checkpoint          │
+└─────────────────────────────────────────────────┘
+```
+
+这套策略本质上是在弥补可能存在的 **软件保护层缺口**——Intel GPU 驱动栈的容错机制可能不及更成熟的平台完善。加入这些措施后，三个项目均稳定运行。
+
 ## 总结（仅限于本次测试环境）
 
 在本次测试的平台和模型下，以下策略帮助实现了稳定运行：
@@ -231,7 +324,9 @@ Without these measures, sustained GPU load >90% eventually triggered a driver cr
 - **通过推理延迟监测温度**，在降频初期及时触发额外冷却
 - **INT8 量化 + 负载限制 + 冷却间隔** 的组合实现了稳定运行（尚未在同等保护下测试 INT4）
 
-如果不采取这些措施，无论采用何种量化格式，GPU 在 >90% 占用率下持续运行最终触发了驱动崩溃。这些发现不保证适用于其它 Intel Arc 配置。
+如果不采取这些措施，无论采用何种量化格式，GPU 在 >90% 占用率下持续运行最终触发了驱动崩溃。这一规律在三个不同项目（OpenVINO 推理、PyTorch XPU 训练、AlphaZero 训练）中均得到重现，可能指向软件保护层的共性问题，而非硬件缺陷。
+
+这些发现不保证适用于其它 Intel Arc 配置。
 
 ---
 
