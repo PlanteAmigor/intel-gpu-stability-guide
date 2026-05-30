@@ -88,8 +88,24 @@ This pattern was not limited to OpenVINO inference. We observed the same behavio
 | **Qwen3 embedding** | OpenVINO | LLM inference | Kernel panic / segfault | INT8 + batch=10 + cooling | ✅ Stable |
 | **Gated CNN poetry** | PyTorch XPU | Text model training (61M params) | Terminal freeze, training stalls | Per-8-batch 3s cooling + per-update 5s cooling + latency monitoring | ✅ Stable (loss 9.1→0.85) |
 | **AlphaZero gomoku** | PyTorch XPU | Game AI training (CNN) | Segfault at batch ~293 | Per-50-batch 30s cooling + retry ×3 | ✅ Stable |
+| **ComfyUI T2I** | PyTorch XPU (ComfyUI) | Diffusion image generation | Black images at high res/steps | KSampler per-step 3s cooling + throttling detection | ✅ Stable (1440×1024, 16 steps) |
 
-In all three cases, the fix was the same: **reduce sustained GPU load with frequent cooldown breaks.** The symptoms (terminal freezing, segfaults, NaN output) looked different but shared a common root.
+In all **four** cases, the fix was the same: **reduce sustained GPU load with frequent cooldown breaks.** The symptoms (terminal freezing, segfaults, NaN output) looked different but shared a common root.
+
+### 6. Fourth Validation: ComfyUI Image Generation (2026-05-31)
+
+The same protection pattern was successfully applied to ComfyUI (image generation):
+
+| Project | Framework | Workload | Issue | Mitigation | Result |
+|---------|-----------|----------|-------|------------|--------|
+| **ComfyUI text-to-image** | PyTorch XPU (ComfyUI) | Diffusion image generation | Black images at high res / many steps | Per-step 3s cooling + throttling detection + `empty_cache` | ✅ Stable (1440×1024, 16 steps) |
+
+**Before:** 1024×1024 at 8 steps was the maximum; higher resolutions or more steps produced completely black images (NaN output).
+**After:** 1440×1024 at 16 steps generates correctly.
+
+The fix was applied at the KSampler callback level (`comfy/samplers.py`), adding 3s cooldown with throttling detection after each diffusion step. Also added XPU environment variables to the launch script (`run_intel_gpu.sh`).
+
+**Key implementation detail:** Unlike the other projects which use batch-level cooling, ComfyUI's cooling is at the **individual diffusion step level** — every step of the KSampler gets a brief rest. This is because each step is a full model evaluation (unet forward), comparable to a training batch in intensity.
 
 ### 5. Possible Root Cause: Software Protection Layer, Not Hardware
 
@@ -251,8 +267,9 @@ These findings may or may not apply to other Intel Arc configurations.
 | **Qwen3 向量化** | OpenVINO | 大模型推理 | Kernel panic / 段错误 | INT8 + batch=10 + 冷却 | ✅ 稳定 |
 | **Gated CNN 诗词** | PyTorch XPU | 文本模型训练 (61M) | 终端卡死、训练中断 | 每8批冷3s + 每更新冷5s + 耗时检测 | ✅ 稳定 (loss 9.1→0.85) |
 | **AlphaZero 五子棋** | PyTorch XPU | 游戏 AI 训练 (CNN) | 约第293批段错误 | 每50批冷30s + 重试×3 | ✅ 稳定 |
+| **ComfyUI 文生图** | PyTorch XPU (ComfyUI) | 扩散模型图像生成 | 高分辨率/多步数出黑图 | KSampler 每步冷3s + 降频检测 | ✅ 稳定 (1440×1024, 16步) |
 
-三个案例的解决方案相同：**通过频繁冷却来降低 GPU 持续负载。** 症状（终端冻结、段错误、NaN输出）看起来不同，但根源可能一致。
+四个案例的解决方案相同：**通过频繁冷却来降低 GPU 持续负载。** 症状（终端冻结、段错误、NaN输出）看起来不同，但根源可能一致。
 
 ### 5. 可能原因：软件保护层不到位，而非硬件问题
 
