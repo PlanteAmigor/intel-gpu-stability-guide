@@ -8,6 +8,8 @@ This directory documents issues encountered during AI training and inference on 
 
 > ⚠️ **Disclaimer:** All observations here are based on specific hardware/software/model combinations and **may not apply to other environments**. See detailed disclaimers in each document.
 
+🌐 **Language:** [English](https://github.com/PlanteAmigor/intel-gpu-stability-guide/blob/main/README.md) · [中文](https://github.com/PlanteAmigor/intel-gpu-stability-guide/blob/main/README.zh-CN.md)
+
 ---
 
 ## Hardware Environment

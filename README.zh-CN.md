@@ -8,6 +8,8 @@
 
 > ⚠️ **免责声明：** 本文档所述的观察均基于特定硬件/软件/模型组合，**可能不适用于其他环境**。详见各文档中的详细免责说明。
 
+🌐 **语言:** [English](https://github.com/PlanteAmigor/intel-gpu-stability-guide/blob/main/README.md) · [中文](https://github.com/PlanteAmigor/intel-gpu-stability-guide/blob/main/README.zh-CN.md)
+
 ---
 
 ## 硬件环境
