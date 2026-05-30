@@ -84,7 +84,7 @@ This directory documents issues encountered during AI training and inference on 
 ## External Links
 
 - [Intel GPU Stability Guide (GitHub)](https://github.com/PlanteAmigor/intel-gpu-stability-guide) — External mirror of this repo
-- [PyTorch XPU Documentation](https://pytorch.org/docs/stable/notes/xpu.html)
+- [PyTorch XPU Documentation](https://docs.pytorch.org/docs/2.12/xpu.html)
 - [OpenVINO Documentation](https://docs.openvino.ai/)
 
 ---

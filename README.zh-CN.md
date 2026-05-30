@@ -84,7 +84,7 @@
 ## 外部链接
 
 - [Intel GPU 稳定性指南 (GitHub)](https://github.com/PlanteAmigor/intel-gpu-stability-guide) — 本仓库的外部镜像
-- [PyTorch XPU 官方文档](https://pytorch.org/docs/stable/notes/xpu.html)
+- [PyTorch XPU 官方文档](https://docs.pytorch.org/docs/2.12/xpu.html)
 - [OpenVINO 官方文档](https://docs.openvino.ai/)
 
 ---
